@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 - Unreleased
+## 1.0.0 - Initial release
 
 - Initial standalone release of Cardputer ADV Recorder.
 - Stream 16 kHz mono PCM recordings to microSD.
