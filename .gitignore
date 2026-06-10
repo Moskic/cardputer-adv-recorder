@@ -1,0 +1,10 @@
+.pio/
+dist/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.swp
+*.tmp
+*.log
+*.wav
+*.WAV
