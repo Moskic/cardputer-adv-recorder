@@ -27,6 +27,7 @@ InputEvent InputController::poll()
     event.deletePressed = state.del;
 
     for (const char character : state.word) {
+        event.text += character;
         switch (character) {
             case ',':
                 event.left = true;
@@ -46,6 +47,10 @@ InputEvent InputController::poll()
             case 'f':
             case 'F':
                 event.fail = true;
+                break;
+            case 'h':
+            case 'H':
+                event.help = true;
                 break;
             case 'r':
             case 'R':

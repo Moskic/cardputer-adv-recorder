@@ -146,4 +146,14 @@ bool StorageService::remove(const char* path)
     return true;
 }
 
+bool StorageService::rename(const char* from, const char* to)
+{
+    if (!isMounted() || !SD.rename(from, to)) {
+        error_ = ErrorCode::kIo;
+        return false;
+    }
+    error_ = ErrorCode::kNone;
+    return true;
+}
+
 }  // namespace cardputer_recorder

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 namespace cardputer_recorder {
 
 struct InputEvent {
@@ -14,6 +16,8 @@ struct InputEvent {
     bool record = false;
     bool deletePressed = false;
     bool settings = false;
+    bool help = false;
+    String text;
 };
 
 class InputController {

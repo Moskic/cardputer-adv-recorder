@@ -12,8 +12,8 @@ is not limited by available RAM.
 ## Features
 
 - Stream recordings to microSD as `/REC0001.WAV` through `/REC9999.WAV`.
-- Browse, play, and delete WAV files from the device.
-- Adjust playback volume while listening.
+- Browse, play, rename, lock, and delete WAV files from the device.
+- Pause, seek, and adjust playback volume while listening.
 - Show recording level, elapsed time, file size, battery status, SD free
   space, and selected-file details.
 - Configure display brightness and screen saver behavior from the device.
@@ -59,15 +59,27 @@ platformio test -e native-tests
 | Key | Action |
 | --- | --- |
 | `R` | Start recording |
+| `H` in library | Open help |
 | `Enter`, `Esc`, or `R` | Stop and save a recording |
 | Up/Down key positions (`;` / `.`) | Select a recording |
-| `Enter` | Play or stop the selected recording |
+| `Enter` | Play the selected recording |
+| `Enter` during playback | Pause or resume playback |
+| `Esc` during playback | Stop playback |
+| Left/Right during playback (`,` / `/`) | Seek backward or forward 10 seconds |
 | Up/Down during playback | Adjust volume |
-| `Delete` | Delete the selected recording |
+| Left in library (`,`) | Lock or unlock the selected recording |
+| Right in library (`/`) | Rename the selected recording |
+| `Delete` in library | Ask to delete the selected recording |
+| `Enter` after `Delete` | Confirm deletion |
 | Short `G0` press | Manually enter the configured screen saver mode |
 | Long `G0` press | Open settings |
 | Left/Right key positions (`,` / `/`) | Change a setting value |
 | `Esc` in settings | Save settings or return from a submenu |
+| `Enter` in rename | Save the new name |
+| `Delete` in rename | Remove the last character |
+| `Esc` in rename | Cancel rename |
+| Left/Right in help | Change help page |
+| `Enter` or `Esc` in help | Close help |
 
 ## Settings
 
@@ -87,6 +99,17 @@ press wakes the screen and is not used as a stop, delete, or volume command.
 
 Settings marked `WIP` are stored for later firmware stages but do not change
 behavior yet.
+
+## File management
+
+The library sorts recordings by filename descending so newer default names are
+near the top. Locked recordings show `*` before the filename and cannot be
+deleted until unlocked. Lock state is stored on the card in `RECORDER.LCK`;
+if the file is missing or damaged, recordings remain usable.
+
+Rename keeps the `.WAV` suffix automatically. Names are converted to uppercase
+and accept letters, numbers, spaces, `_`, and `-`. Existing files are never
+overwritten.
 
 ## Audio format
 

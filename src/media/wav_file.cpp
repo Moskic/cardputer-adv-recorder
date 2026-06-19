@@ -472,6 +472,29 @@ std::size_t WavReader::readSamples(std::int16_t* destination,
     return read / sizeof(std::int16_t);
 }
 
+bool WavReader::seekDataByteOffset(std::uint32_t byteOffset)
+{
+    if (!file_) {
+        return false;
+    }
+    const std::uint32_t blockAlign =
+        info_.spec.channels * (info_.spec.bitsPerSample / 8);
+    if (blockAlign == 0) {
+        return false;
+    }
+    if (byteOffset > info_.dataSize) {
+        byteOffset = info_.dataSize;
+    }
+    byteOffset -= byteOffset % blockAlign;
+    if (!file_.seek(info_.dataOffset + byteOffset)) {
+        error_ = WavError::kTruncated;
+        return false;
+    }
+    bytesRead_ = byteOffset;
+    error_ = WavError::kNone;
+    return true;
+}
+
 void WavReader::end()
 {
     if (file_) {

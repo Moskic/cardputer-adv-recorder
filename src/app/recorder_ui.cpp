@@ -66,8 +66,13 @@ void RecorderApp::draw()
                                             SettingsPage::kScreenSaver
                                         ? "SCREEN"
                                         : "SETTINGS")
-                                 : (state_ == State::kError ? "ERROR"
-                                                           : "LIBRARY"))));
+                                 : (state_ == State::kRename
+                                        ? "RENAME"
+                                        : (state_ == State::kHelp
+                                               ? "HELP"
+                                               : (state_ == State::kError
+                                                      ? "ERROR"
+                                                      : "LIBRARY"))))));
     display.drawString(pageLabel, display.width() - 8, 8);
     display.setTextDatum(top_left);
 
@@ -149,7 +154,8 @@ void RecorderApp::draw()
         display.setTextFont(4);
         display.setTextDatum(middle_center);
         display.setTextColor(TFT_WHITE, background);
-        display.drawString(formatTime(elapsed),
+        display.drawString(playbackPaused_ ? "PAUSED"
+                                           : formatTime(elapsed),
                            display.width() / 2, 59);
         display.setTextDatum(top_left);
         display.drawRoundRect(8, 81, display.width() - 16, 10, 4,
@@ -172,9 +178,9 @@ void RecorderApp::draw()
         display.setTextDatum(top_left);
         display.setTextColor(TFT_WHITE, background);
         display.setCursor(8, 116);
-        display.print("UP/DOWN volume");
+        display.print("LEFT/RIGHT seek");
         display.setTextDatum(top_right);
-        display.drawString("ENTER stop", display.width() - 8, 116);
+        display.drawString("ENTER pause", display.width() - 8, 116);
         display.setTextDatum(top_left);
     } else if (state_ == State::kSettings) {
         const bool screenSaverPage =
@@ -222,6 +228,74 @@ void RecorderApp::draw()
         display.setTextColor(muted, panel);
         display.drawString(screenSaverPage ? "ESC BACK" : "ESC SAVE",
                            display.width() - 8, 120);
+        display.setTextDatum(top_left);
+    } else if (state_ == State::kRename) {
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.setCursor(8, 34);
+        display.print(renameOriginalName_);
+        display.fillRoundRect(8, 54, display.width() - 16, 24, 4,
+                              panel);
+        display.setTextFont(2);
+        display.setTextColor(TFT_WHITE, panel);
+        display.setCursor(14, 59);
+        display.print(renameText_);
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.setCursor(14, 84);
+        display.print(".WAV");
+        display.setCursor(8, 98);
+        display.print(message_);
+        display.fillRect(0, 111, display.width(), 24, panel);
+        display.setTextColor(accent, panel);
+        display.setCursor(8, 120);
+        display.print("TYPE NAME");
+        display.setTextDatum(top_right);
+        display.setTextColor(muted, panel);
+        display.drawString("ENTER SAVE", display.width() - 8, 120);
+        display.setTextDatum(top_left);
+    } else if (state_ == State::kHelp) {
+        const char* titles[] = {
+            "Library 1", "Library 2", "Delete", "Rename",
+            "Recording", "Playback 1", "Playback 2", "System"};
+        const char* rows[][4] = {
+            {"R  record", "ENTER  play", "UP/DOWN  select", ""},
+            {"LEFT  lock", "RIGHT  rename", "H  help", ""},
+            {"DELETE  ask", "ENTER  confirm", "ESC  cancel", ""},
+            {"TYPE  name", "DELETE  backspace", "ENTER  save", ""},
+            {"ENTER  stop", "R / ESC  stop", "G0  screen saver", ""},
+            {"ENTER  pause", "ESC  stop", "UP/DOWN  volume", ""},
+            {"LEFT  back 10s", "RIGHT  fwd 10s", "G0  screen saver", ""},
+            {"Hold G0  settings", "1st key wakes", "LEFT/RIGHT page", ""},
+        };
+
+        display.setTextFont(2);
+        display.setTextColor(TFT_WHITE, background);
+        display.setCursor(8, 32);
+        display.print(titles[helpPage_]);
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.setTextDatum(top_right);
+        display.drawString(
+            String(helpPage_ + 1) + "/8", display.width() - 8, 35);
+        display.setTextDatum(top_left);
+        display.setTextFont(2);
+        display.setTextColor(TFT_WHITE, background);
+        for (std::uint8_t row = 0; row < 4; ++row) {
+            if (rows[helpPage_][row][0] == '\0') {
+                continue;
+            }
+            display.setCursor(12, 52 + row * 17);
+            display.print(rows[helpPage_][row]);
+        }
+        display.fillRect(0, 111, display.width(), 24, panel);
+        display.setTextFont(1);
+        display.setTextColor(accent, panel);
+        display.setCursor(8, 120);
+        display.print("LEFT/RIGHT page");
+        display.setTextDatum(top_right);
+        display.setTextColor(muted, panel);
+        display.drawString("ENTER/ESC BACK", display.width() - 8, 120);
         display.setTextDatum(top_left);
     } else if (state_ == State::kError) {
         display.fillRoundRect(8, 34, display.width() - 16, 70, 6,
@@ -275,6 +349,9 @@ void RecorderApp::draw()
                     index == selected_ ? TFT_WHITE : muted,
                     index == selected_ ? selectedPanel : background);
                 display.setCursor(10, y);
+                if (isLocked(files_[index])) {
+                    display.print("* ");
+                }
                 display.print(files_[index]);
                 display.setTextDatum(middle_right);
                 display.setTextFont(1);
@@ -293,13 +370,14 @@ void RecorderApp::draw()
         display.setTextFont(1);
         display.setTextColor(TFT_RED, panel);
         display.setCursor(8, 120);
-        display.print("R RECORD");
+        display.print(deleteConfirm_ ? "ENTER DELETE" : "R RECORD");
         display.setTextDatum(top_center);
         display.setTextColor(accent, panel);
-        display.drawString("ENTER PLAY", display.width() / 2, 120);
+        display.drawString(deleteConfirm_ ? "ESC CANCEL" : "H HELP",
+                           display.width() / 2, 120);
         display.setTextDatum(top_right);
         display.setTextColor(muted, panel);
-        display.drawString(files_.empty() ? "G0 SET" : "DEL",
+        display.drawString(files_.empty() ? "G0 SET" : "DELETE",
                            display.width() - 8, 120);
         display.setTextDatum(top_left);
     }

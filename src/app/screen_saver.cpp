@@ -8,7 +8,8 @@ bool RecorderApp::anyInput(const InputEvent& event) const
 {
     return event.g0 || event.left || event.right || event.up ||
            event.down || event.confirm || event.back || event.fail ||
-           event.record || event.deletePressed || event.settings;
+           event.record || event.deletePressed || event.settings ||
+           event.help;
 }
 bool RecorderApp::screenSaverAllowed() const
 {
@@ -131,7 +132,8 @@ void RecorderApp::drawScreenSaver(unsigned long now)
         display.setTextFont(4);
         display.setTextDatum(middle_center);
         display.setTextColor(TFT_WHITE, background);
-        display.drawString(formatTime(elapsed),
+        display.drawString(playbackPaused_ ? "PAUSED"
+                                           : formatTime(elapsed),
                            display.width() / 2, 54);
         display.drawRoundRect(20, 80, display.width() - 40, 8, 3,
                               muted);

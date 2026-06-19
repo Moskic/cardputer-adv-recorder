@@ -29,6 +29,8 @@ private:
         kSaving,
         kPlaying,
         kSettings,
+        kRename,
+        kHelp,
         kError,
     };
 
@@ -63,10 +65,17 @@ private:
     void finishSaving(bool success, const String& detail);
     bool startPlayback();
     void servicePlayback();
+    void togglePlaybackPause();
+    bool seekPlayback(int seconds);
     void stopPlayback();
     void openSettings();
     void closeSettings();
     void handleSettingsInput(const InputEvent& event);
+    void openHelp();
+    void handleHelpInput(const InputEvent& event);
+    void beginRenameSelected();
+    void handleRenameInput(const InputEvent& event);
+    void commitRename();
     void cycleSelectedSetting(int offset);
     void loadSettings();
     void saveSettings();
@@ -81,6 +90,10 @@ private:
     void wakeScreen();
     void drawScreenSaver(unsigned long now);
     void deleteSelected();
+    void toggleLockSelected();
+    bool isLocked(const String& filename) const;
+    void loadLocks();
+    bool saveLocks();
     void scanFiles();
     bool chooseRecordingPath(char* path, std::size_t capacity);
     bool primeCapture();
@@ -96,6 +109,7 @@ private:
     void adjustVolume(int offset);
     void updateBattery(bool force = false);
     unsigned long playbackElapsedMs() const;
+    std::uint32_t playbackBytesPerSecond() const;
     String storageUsageText() const;
     String selectedRecordingDetail();
     void setError(const String& message);
@@ -120,12 +134,18 @@ private:
     State state_ = State::kBrowsing;
     Settings settings_;
     std::uint8_t selectedSetting_ = 0;
+    std::uint8_t helpPage_ = 0;
     SettingsPage settingsPage_ = SettingsPage::kMain;
     ScreenSaverState screenSaverState_ = ScreenSaverState::kAwake;
     bool screenSaverManual_ = false;
     unsigned long lastUserActivityMs_ = 0;
     std::vector<String> files_;
+    std::vector<String> lockedFiles_;
     int selected_ = 0;
+    bool deleteConfirm_ = false;
+    String deleteConfirmName_;
+    String renameOriginalName_;
+    String renameText_;
     std::int16_t
         audioBuffers_[kAudioBufferCount][kAudioSamplesPerBuffer] = {};
     std::uint8_t captureActive_[kCaptureQueueDepth] = {};
@@ -145,6 +165,8 @@ private:
     std::uint8_t playbackBufferIndex_ = 0;
     std::uint8_t playbackVolume_ = 255;
     std::uint32_t playbackDurationMs_ = 0;
+    std::uint32_t playbackBaseElapsedMs_ = 0;
+    bool playbackPaused_ = false;
     std::uint32_t saveTotalBytes_ = 0;
     std::uint32_t saveCopiedBytes_ = 0;
     unsigned long saveSettledAtMs_ = 0;

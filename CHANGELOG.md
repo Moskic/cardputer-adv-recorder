@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 - Playback controls and file management
+
+- Add pause and resume during playback.
+- Add 10-second seek backward and forward during playback.
+- Keep volume controls on Up/Down and use `Esc` to stop playback.
+- Show `PAUSED` in the playback UI and dimmed playback screen.
+- Keep wake-first-key behavior for dimmed or black screen playback.
+- Add library file rename.
+- Add recording lock state with delete protection.
+- Add delete confirmation for unlocked recordings.
+- Sort recordings by filename descending.
+- Add a paged help screen opened with `H` from the library.
+
 ## 1.2.0 - App structure and release packaging
 
 - Split the recorder application implementation into focused app modules for

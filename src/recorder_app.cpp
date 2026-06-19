@@ -90,6 +90,14 @@ void RecorderApp::handleInput(const InputEvent& event)
         handleSettingsInput(event);
         return;
     }
+    if (state_ == State::kHelp) {
+        handleHelpInput(event);
+        return;
+    }
+    if (state_ == State::kRename) {
+        handleRenameInput(event);
+        return;
+    }
     if (state_ == State::kPlaying) {
         if (event.g0) {
             enterScreenSaver(true);
@@ -100,7 +108,14 @@ void RecorderApp::handleInput(const InputEvent& event)
         } else if (event.down) {
             adjustVolume(-16);
         }
-        if (event.confirm || event.back) {
+        if (event.left) {
+            seekPlayback(-10);
+        } else if (event.right) {
+            seekPlayback(10);
+        }
+        if (event.confirm) {
+            togglePlaybackPause();
+        } else if (event.back) {
             stopPlayback();
         }
         return;
@@ -125,20 +140,70 @@ void RecorderApp::handleInput(const InputEvent& event)
         openSettings();
         return;
     }
-    if (event.up && !files_.empty()) {
+    if (event.help) {
+        openHelp();
+        return;
+    }
+    if (deleteConfirm_ && (event.back || event.up || event.down ||
+                           event.left || event.right || event.record ||
+                           event.g0 || event.settings)) {
+        deleteConfirm_ = false;
+        deleteConfirmName_ = "";
+        message_ = "Delete canceled.";
+        forceRedraw_ = true;
+    }
+    if (deleteConfirm_ && event.confirm) {
+        deleteSelected();
+    } else if (event.up && !files_.empty()) {
         selected_ =
             (selected_ + static_cast<int>(files_.size()) - 1) %
             static_cast<int>(files_.size());
+        deleteConfirm_ = false;
         forceRedraw_ = true;
     } else if (event.down && !files_.empty()) {
         selected_ = (selected_ + 1) % static_cast<int>(files_.size());
+        deleteConfirm_ = false;
         forceRedraw_ = true;
+    } else if (event.left && !files_.empty()) {
+        toggleLockSelected();
+    } else if (event.right && !files_.empty()) {
+        beginRenameSelected();
     } else if (event.record) {
         startRecording();
     } else if (event.confirm && !files_.empty()) {
         startPlayback();
     } else if (event.deletePressed && !files_.empty()) {
         deleteSelected();
+    }
+}
+
+void RecorderApp::openHelp()
+{
+    helpPage_ = 0;
+    deleteConfirm_ = false;
+    deleteConfirmName_ = "";
+    state_ = State::kHelp;
+    message_ = "Help";
+    forceRedraw_ = true;
+}
+
+void RecorderApp::handleHelpInput(const InputEvent& event)
+{
+    constexpr std::uint8_t kHelpPageCount = 8;
+    if (event.back || event.confirm || event.help) {
+        state_ = State::kBrowsing;
+        message_ = "Help closed.";
+        forceRedraw_ = true;
+        return;
+    }
+    if (event.left || event.up) {
+        helpPage_ = static_cast<std::uint8_t>(
+            (helpPage_ + kHelpPageCount - 1) % kHelpPageCount);
+        forceRedraw_ = true;
+    } else if (event.right || event.down) {
+        helpPage_ =
+            static_cast<std::uint8_t>((helpPage_ + 1) % kHelpPageCount);
+        forceRedraw_ = true;
     }
 }
 

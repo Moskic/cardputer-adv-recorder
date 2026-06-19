@@ -50,6 +50,7 @@ public:
     bool begin(File file);
     std::size_t readSamples(std::int16_t* destination,
                             std::size_t sampleCapacity);
+    bool seekDataByteOffset(std::uint32_t byteOffset);
     void end();
     bool isOpen() const;
     bool finished() const;

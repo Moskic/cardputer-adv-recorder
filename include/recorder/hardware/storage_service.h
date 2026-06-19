@@ -25,6 +25,7 @@ public:
     int openWriteDescriptor(const char* path);
     bool exists(const char* path) const;
     bool remove(const char* path);
+    bool rename(const char* from, const char* to);
 private:
     ServiceState state_ = ServiceState::kStopped;
     ErrorCode error_ = ErrorCode::kNone;
