@@ -1,4 +1,6 @@
 .pio/
+.platformio/
+.venv/
 dist/
 .vscode/*
 !.vscode/extensions.json

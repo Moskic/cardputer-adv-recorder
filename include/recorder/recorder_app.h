@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -27,7 +28,29 @@ private:
         kRecording,
         kSaving,
         kPlaying,
+        kSettings,
         kError,
+    };
+
+    struct Settings {
+        std::uint8_t brightnessPercent = 70;
+        std::uint8_t idleScreenMode = 1;
+        std::uint8_t recordingScreenMode = 1;
+        std::uint8_t playbackScreenMode = 1;
+        std::uint8_t idleSleepMode = 0;
+        std::uint8_t playbackSpeedIndex = 1;
+        bool vadEnabled = false;
+    };
+
+    enum class ScreenSaverState : std::uint8_t {
+        kAwake,
+        kDim,
+        kOff,
+    };
+
+    enum class SettingsPage : std::uint8_t {
+        kMain,
+        kScreenSaver,
     };
 
     void handleInput(const InputEvent& event);
@@ -41,6 +64,22 @@ private:
     bool startPlayback();
     void servicePlayback();
     void stopPlayback();
+    void openSettings();
+    void closeSettings();
+    void handleSettingsInput(const InputEvent& event);
+    void cycleSelectedSetting(int offset);
+    void loadSettings();
+    void saveSettings();
+    void applyBrightness();
+    String settingValueText(std::uint8_t index) const;
+    bool anyInput(const InputEvent& event) const;
+    bool screenSaverAllowed() const;
+    std::uint8_t screenSaverModeForState() const;
+    void serviceScreenSaver();
+    void resetScreenSaverTimer();
+    void enterScreenSaver(bool manual);
+    void wakeScreen();
+    void drawScreenSaver(unsigned long now);
     void deleteSelected();
     void scanFiles();
     bool chooseRecordingPath(char* path, std::size_t capacity);
@@ -57,6 +96,8 @@ private:
     void adjustVolume(int offset);
     void updateBattery(bool force = false);
     unsigned long playbackElapsedMs() const;
+    String storageUsageText() const;
+    String selectedRecordingDetail();
     void setError(const String& message);
     void draw();
 
@@ -74,8 +115,15 @@ private:
     InputController input_;
     WavWriter writer_;
     WavReader reader_;
+    Preferences preferences_;
 
     State state_ = State::kBrowsing;
+    Settings settings_;
+    std::uint8_t selectedSetting_ = 0;
+    SettingsPage settingsPage_ = SettingsPage::kMain;
+    ScreenSaverState screenSaverState_ = ScreenSaverState::kAwake;
+    bool screenSaverManual_ = false;
+    unsigned long lastUserActivityMs_ = 0;
     std::vector<String> files_;
     int selected_ = 0;
     std::int16_t

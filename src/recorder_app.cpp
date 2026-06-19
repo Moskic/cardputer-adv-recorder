@@ -17,6 +17,11 @@ constexpr unsigned long kCaptureStartTimeoutMs = 1000;
 constexpr unsigned long kCaptureDrainTimeoutMs = 1000;
 constexpr unsigned long kSaveSettleMs = 750;
 constexpr unsigned long kRecordingStopGuardMs = 500;
+constexpr std::uint8_t kSettingsCount = 5;
+constexpr std::uint8_t kScreenSaverSettingsCount = 3;
+constexpr unsigned long kIdleScreenSaverDelayMs = 30000;
+constexpr unsigned long kActiveScreenSaverDelayMs = 15000;
+constexpr std::uint8_t kDimBrightness = 12;
 
 M5Canvas recorderCanvas(&M5Cardputer.Display);
 
@@ -28,6 +33,69 @@ String formatTime(unsigned long milliseconds)
     char text[12];
     snprintf(text, sizeof(text), "%02lu:%02lu", minutes, seconds);
     return String(text);
+}
+
+String formatByteCount(std::uint64_t bytes)
+{
+    char text[16];
+    if (bytes >= 1024ULL * 1024ULL * 1024ULL) {
+        const std::uint64_t tenths =
+            bytes * 10ULL / (1024ULL * 1024ULL * 1024ULL);
+        snprintf(text, sizeof(text), "%llu.%lluGB",
+                 tenths / 10ULL, tenths % 10ULL);
+    } else if (bytes >= 1024ULL * 1024ULL) {
+        const std::uint64_t tenths =
+            bytes * 10ULL / (1024ULL * 1024ULL);
+        snprintf(text, sizeof(text), "%llu.%lluMB",
+                 tenths / 10ULL, tenths % 10ULL);
+    } else if (bytes >= 1024ULL) {
+        snprintf(text, sizeof(text), "%lluKB", bytes / 1024ULL);
+    } else {
+        snprintf(text, sizeof(text), "%lluB", bytes);
+    }
+    return String(text);
+}
+
+const char* screenModeText(std::uint8_t mode)
+{
+    switch (mode) {
+        case 0:
+            return "OFF";
+        case 1:
+            return "Dimmed Standby";
+        default:
+            return "BLACK";
+    }
+}
+
+const char* idleSleepText(std::uint8_t mode)
+{
+    switch (mode) {
+        case 1:
+            return "5 MIN";
+        case 2:
+            return "15 MIN";
+        case 3:
+            return "30 MIN";
+        default:
+            return "OFF";
+    }
+}
+
+const char* playbackSpeedText(std::uint8_t index)
+{
+    switch (index) {
+        case 0:
+            return "0.75x";
+        case 2:
+            return "1.25x";
+        case 3:
+            return "1.5x";
+        case 4:
+            return "2.0x";
+        default:
+            return "1.0x";
+    }
 }
 
 }  // namespace
@@ -42,20 +110,23 @@ void RecorderApp::begin()
 
     audio_.begin();
     power_.begin();
+    loadSettings();
     updateBattery(true);
     auto& display = M5Cardputer.Display;
     display.setRotation(1);
+    applyBrightness();
     display.fillScreen(TFT_BLACK);
     display.setTextWrap(false);
     recorderCanvas.setColorDepth(8);
     recorderCanvas.createSprite(display.width(), display.height());
     recorderCanvas.setTextWrap(false);
+    resetScreenSaverTimer();
 
     if (!storage_.begin()) {
         setError("Insert a writable microSD card.");
     } else {
         scanFiles();
-        message_ = "R: record  Enter: play";
+        message_ = "Hold G0 for settings.";
     }
     draw();
 }
@@ -70,6 +141,7 @@ void RecorderApp::update()
 
     const InputEvent event = input_.poll();
     handleInput(event);
+    serviceScreenSaver();
 
     if (state_ == State::kRecording) {
         serviceRecording();
@@ -85,7 +157,21 @@ void RecorderApp::update()
 
 void RecorderApp::handleInput(const InputEvent& event)
 {
+    const bool hasInput = anyInput(event);
+    if (hasInput) {
+        if (screenSaverState_ != ScreenSaverState::kAwake) {
+            wakeScreen();
+            resetScreenSaverTimer();
+            return;
+        }
+        resetScreenSaverTimer();
+    }
+
     if (state_ == State::kRecording) {
+        if (event.g0) {
+            enterScreenSaver(true);
+            return;
+        }
         if (millis() - operationStartedMs_ >=
                 kRecordingStopGuardMs &&
             (event.confirm || event.back || event.record)) {
@@ -96,7 +182,15 @@ void RecorderApp::handleInput(const InputEvent& event)
     if (state_ == State::kSaving) {
         return;
     }
+    if (state_ == State::kSettings) {
+        handleSettingsInput(event);
+        return;
+    }
     if (state_ == State::kPlaying) {
+        if (event.g0) {
+            enterScreenSaver(true);
+            return;
+        }
         if (event.up) {
             adjustVolume(16);
         } else if (event.down) {
@@ -119,6 +213,14 @@ void RecorderApp::handleInput(const InputEvent& event)
         return;
     }
 
+    if (event.g0) {
+        enterScreenSaver(true);
+        return;
+    }
+    if (event.settings) {
+        openSettings();
+        return;
+    }
     if (event.up && !files_.empty()) {
         selected_ =
             (selected_ + static_cast<int>(files_.size()) - 1) %
@@ -529,6 +631,379 @@ void RecorderApp::stopPlayback()
     forceRedraw_ = true;
 }
 
+void RecorderApp::openSettings()
+{
+    selectedSetting_ = 0;
+    settingsPage_ = SettingsPage::kMain;
+    state_ = State::kSettings;
+    message_ = "Settings";
+    forceRedraw_ = true;
+}
+
+void RecorderApp::closeSettings()
+{
+    saveSettings();
+    state_ = State::kBrowsing;
+    message_ = "Settings saved. Hold G0 to reopen.";
+    forceRedraw_ = true;
+}
+
+void RecorderApp::handleSettingsInput(const InputEvent& event)
+{
+    if (event.settings || event.back) {
+        if (settingsPage_ == SettingsPage::kScreenSaver) {
+            settingsPage_ = SettingsPage::kMain;
+            selectedSetting_ = 1;
+            forceRedraw_ = true;
+            return;
+        }
+        closeSettings();
+        return;
+    }
+    const std::uint8_t settingCount =
+        settingsPage_ == SettingsPage::kScreenSaver
+            ? kScreenSaverSettingsCount
+            : kSettingsCount;
+    if (event.up) {
+        selectedSetting_ =
+            (selectedSetting_ + settingCount - 1) % settingCount;
+        forceRedraw_ = true;
+    } else if (event.down) {
+        selectedSetting_ = (selectedSetting_ + 1) % settingCount;
+        forceRedraw_ = true;
+    } else if (event.right || event.confirm) {
+        if (settingsPage_ == SettingsPage::kMain &&
+            selectedSetting_ == 1) {
+            settingsPage_ = SettingsPage::kScreenSaver;
+            selectedSetting_ = 0;
+            forceRedraw_ = true;
+            return;
+        }
+        cycleSelectedSetting(1);
+    } else if (event.left) {
+        cycleSelectedSetting(-1);
+    }
+}
+
+void RecorderApp::cycleSelectedSetting(int offset)
+{
+    if (settingsPage_ == SettingsPage::kScreenSaver) {
+        std::uint8_t* value = nullptr;
+        if (selectedSetting_ == 0) {
+            value = &settings_.idleScreenMode;
+        } else if (selectedSetting_ == 1) {
+            value = &settings_.recordingScreenMode;
+        } else if (selectedSetting_ == 2) {
+            value = &settings_.playbackScreenMode;
+        }
+        if (value != nullptr) {
+            *value = static_cast<std::uint8_t>(
+                (static_cast<int>(*value) + 3 + offset) % 3);
+            saveSettings();
+            forceRedraw_ = true;
+        }
+        return;
+    }
+
+    switch (selectedSetting_) {
+        case 0: {
+            constexpr std::uint8_t values[] = {
+                10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
+            constexpr int count = sizeof(values) / sizeof(values[0]);
+            int index = 0;
+            for (int candidate = 0; candidate < count; ++candidate) {
+                if (settings_.brightnessPercent == values[candidate]) {
+                    index = candidate;
+                    break;
+                }
+            }
+            index = (index + count + offset) % count;
+            settings_.brightnessPercent = values[index];
+            applyBrightness();
+            break;
+        }
+        case 2:
+            settings_.idleSleepMode = static_cast<std::uint8_t>(
+                (static_cast<int>(settings_.idleSleepMode) + 4 +
+                 offset) %
+                4);
+            break;
+        case 3:
+            settings_.playbackSpeedIndex = static_cast<std::uint8_t>(
+                (static_cast<int>(settings_.playbackSpeedIndex) + 5 +
+                 offset) %
+                5);
+            break;
+        case 4:
+            settings_.vadEnabled = !settings_.vadEnabled;
+            break;
+        default:
+            break;
+    }
+    saveSettings();
+    forceRedraw_ = true;
+}
+
+void RecorderApp::loadSettings()
+{
+    preferences_.begin("recorder", false);
+    settings_.brightnessPercent =
+        preferences_.getUChar("bright", settings_.brightnessPercent);
+    settings_.idleScreenMode =
+        preferences_.getUChar("idle_scr", settings_.idleScreenMode);
+    settings_.recordingScreenMode =
+        preferences_.getUChar("rec_scr", settings_.recordingScreenMode);
+    settings_.playbackScreenMode =
+        preferences_.getUChar("play_scr", settings_.playbackScreenMode);
+    settings_.idleSleepMode =
+        preferences_.getUChar("sleep", settings_.idleSleepMode);
+    settings_.playbackSpeedIndex =
+        preferences_.getUChar("speed", settings_.playbackSpeedIndex);
+    settings_.vadEnabled =
+        preferences_.getBool("vad", settings_.vadEnabled);
+
+    if (settings_.brightnessPercent < 10 ||
+        settings_.brightnessPercent > 100) {
+        settings_.brightnessPercent = 70;
+    }
+    if (settings_.idleScreenMode > 2) {
+        settings_.idleScreenMode = 1;
+    }
+    if (settings_.recordingScreenMode > 2) {
+        settings_.recordingScreenMode = 1;
+    }
+    if (settings_.playbackScreenMode > 2) {
+        settings_.playbackScreenMode = 1;
+    }
+    if (settings_.idleSleepMode > 3) {
+        settings_.idleSleepMode = 0;
+    }
+    if (settings_.playbackSpeedIndex > 4) {
+        settings_.playbackSpeedIndex = 1;
+    }
+}
+
+void RecorderApp::saveSettings()
+{
+    preferences_.putUChar("bright", settings_.brightnessPercent);
+    preferences_.putUChar("idle_scr", settings_.idleScreenMode);
+    preferences_.putUChar("rec_scr", settings_.recordingScreenMode);
+    preferences_.putUChar("play_scr", settings_.playbackScreenMode);
+    preferences_.putUChar("sleep", settings_.idleSleepMode);
+    preferences_.putUChar("speed", settings_.playbackSpeedIndex);
+    preferences_.putBool("vad", settings_.vadEnabled);
+}
+
+void RecorderApp::applyBrightness()
+{
+    const std::uint8_t brightness = static_cast<std::uint8_t>(
+        max(1, static_cast<int>(settings_.brightnessPercent) * 255 / 100));
+    M5Cardputer.Display.setBrightness(brightness);
+}
+
+String RecorderApp::settingValueText(std::uint8_t index) const
+{
+    if (settingsPage_ == SettingsPage::kScreenSaver) {
+        switch (index) {
+            case 0:
+                return screenModeText(settings_.idleScreenMode);
+            case 1:
+                return screenModeText(settings_.recordingScreenMode);
+            case 2:
+                return screenModeText(settings_.playbackScreenMode);
+            default:
+                return "";
+        }
+    }
+
+    switch (index) {
+        case 0:
+            return String(settings_.brightnessPercent) + "%";
+        case 1:
+            return ">";
+        case 2:
+            return idleSleepText(settings_.idleSleepMode);
+        case 3:
+            return playbackSpeedText(settings_.playbackSpeedIndex);
+        case 4:
+            return settings_.vadEnabled ? "ON" : "OFF";
+        default:
+            return "";
+    }
+}
+
+bool RecorderApp::anyInput(const InputEvent& event) const
+{
+    return event.g0 || event.left || event.right || event.up ||
+           event.down || event.confirm || event.back || event.fail ||
+           event.record || event.deletePressed || event.settings;
+}
+
+bool RecorderApp::screenSaverAllowed() const
+{
+    return state_ == State::kBrowsing || state_ == State::kRecording ||
+           state_ == State::kPlaying || state_ == State::kError;
+}
+
+std::uint8_t RecorderApp::screenSaverModeForState() const
+{
+    if (state_ == State::kRecording) {
+        return settings_.recordingScreenMode;
+    }
+    if (state_ == State::kPlaying) {
+        return settings_.playbackScreenMode;
+    }
+    return settings_.idleScreenMode;
+}
+
+void RecorderApp::serviceScreenSaver()
+{
+    if (!screenSaverAllowed()) {
+        if (screenSaverState_ != ScreenSaverState::kAwake) {
+            wakeScreen();
+        }
+        resetScreenSaverTimer();
+        return;
+    }
+
+    if (screenSaverState_ != ScreenSaverState::kAwake ||
+        screenSaverModeForState() == 0) {
+        return;
+    }
+
+    const unsigned long delayMs =
+        (state_ == State::kRecording || state_ == State::kPlaying)
+            ? kActiveScreenSaverDelayMs
+            : kIdleScreenSaverDelayMs;
+    if (millis() - lastUserActivityMs_ >= delayMs) {
+        enterScreenSaver(false);
+    }
+}
+
+void RecorderApp::resetScreenSaverTimer()
+{
+    lastUserActivityMs_ = millis();
+    screenSaverManual_ = false;
+}
+
+void RecorderApp::enterScreenSaver(bool manual)
+{
+    if (!screenSaverAllowed()) {
+        return;
+    }
+    const std::uint8_t mode = screenSaverModeForState();
+    if (mode == 0) {
+        return;
+    }
+
+    screenSaverManual_ = manual;
+    if (mode == 2) {
+        screenSaverState_ = ScreenSaverState::kOff;
+        M5Cardputer.Display.setBrightness(0);
+        M5Cardputer.Display.sleep();
+        forceRedraw_ = false;
+    } else {
+        screenSaverState_ = ScreenSaverState::kDim;
+        M5Cardputer.Display.wakeup();
+        M5Cardputer.Display.setBrightness(kDimBrightness);
+        forceRedraw_ = true;
+    }
+}
+
+void RecorderApp::wakeScreen()
+{
+    M5Cardputer.Display.wakeup();
+    applyBrightness();
+    screenSaverState_ = ScreenSaverState::kAwake;
+    screenSaverManual_ = false;
+    forceRedraw_ = true;
+}
+
+void RecorderApp::drawScreenSaver(unsigned long now)
+{
+    auto& display = recorderCanvas;
+    constexpr std::uint16_t background = TFT_BLACK;
+    constexpr std::uint16_t muted = 0x7BEF;
+    constexpr std::uint16_t accent = 0x05FF;
+
+    display.fillSprite(background);
+    display.setTextDatum(top_left);
+    display.setTextFont(1);
+    display.setTextColor(muted, background);
+    display.setCursor(8, 8);
+    display.print("RECORDER");
+    display.setTextDatum(top_right);
+    if (battery_.valid) {
+        display.drawString(String(battery_.levelPercent) + "%",
+                           display.width() - 8, 8);
+    } else {
+        display.drawString("--%", display.width() - 8, 8);
+    }
+    display.setTextDatum(top_left);
+
+    if (state_ == State::kRecording) {
+        const std::uint32_t recordingBytes =
+            recordingBytes_.load(std::memory_order_relaxed);
+        display.fillCircle(20, 45, 7, TFT_RED);
+        display.setTextFont(4);
+        display.setTextDatum(middle_center);
+        display.setTextColor(TFT_WHITE, background);
+        display.drawString(formatTime(now - operationStartedMs_),
+                           display.width() / 2, 58);
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.drawString(
+            String(static_cast<unsigned long>(recordingBytes / 1024)) +
+                " KB",
+            display.width() / 2, 88);
+        display.setTextDatum(top_left);
+    } else if (state_ == State::kPlaying) {
+        const unsigned long elapsed = playbackElapsedMs();
+        const std::uint32_t percent =
+            playbackDurationMs_ == 0
+                ? 0
+                : elapsed * 100 / playbackDurationMs_;
+        display.setTextFont(4);
+        display.setTextDatum(middle_center);
+        display.setTextColor(TFT_WHITE, background);
+        display.drawString(formatTime(elapsed),
+                           display.width() / 2, 54);
+        display.drawRoundRect(20, 80, display.width() - 40, 8, 3,
+                              muted);
+        display.fillRoundRect(
+            22, 82, (display.width() - 44) * percent / 100, 4, 2,
+            TFT_GREEN);
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.drawString(
+            "VOL " +
+                String(static_cast<unsigned int>(
+                    playbackVolume_ * 100U / 255U)) +
+                "% " + playbackSpeedText(settings_.playbackSpeedIndex),
+            display.width() / 2, 99);
+        display.setTextDatum(top_left);
+    } else {
+        display.setTextFont(2);
+        display.setTextDatum(middle_center);
+        display.setTextColor(TFT_WHITE, background);
+        display.drawString("Screen saver", display.width() / 2, 56);
+        display.setTextFont(1);
+        display.setTextColor(accent, background);
+        display.drawString("Press any key", display.width() / 2, 82);
+        display.setTextDatum(top_left);
+    }
+
+    if (screenSaverManual_) {
+        display.setTextDatum(bottom_right);
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.drawString("MANUAL", display.width() - 8,
+                           display.height() - 6);
+        display.setTextDatum(top_left);
+    }
+    recorderCanvas.pushSprite(0, 0);
+}
+
 void RecorderApp::deleteSelected()
 {
     const String path = "/" + files_[selected_];
@@ -886,6 +1361,52 @@ unsigned long RecorderApp::playbackElapsedMs() const
                : playbackDurationMs_;
 }
 
+String RecorderApp::storageUsageText() const
+{
+    if (!storage_.isMounted()) {
+        return "SD unavailable";
+    }
+    const std::uint64_t capacity = storage_.capacityBytes();
+    const std::uint64_t used = storage_.usedBytes();
+    if (capacity == 0 || used > capacity) {
+        return "SD size unknown";
+    }
+    return "FREE " + formatByteCount(capacity - used) + " / " +
+           formatByteCount(capacity);
+}
+
+String RecorderApp::selectedRecordingDetail()
+{
+    if (files_.empty() || selected_ < 0 ||
+        selected_ >= static_cast<int>(files_.size())) {
+        return storageUsageText();
+    }
+
+    const String path = "/" + files_[selected_];
+    const std::uint32_t size = storage_.fileSize(path.c_str());
+    String detail = formatByteCount(size);
+
+    File file = storage_.open(path.c_str(), FILE_READ);
+    WavReader detailReader;
+    if (detailReader.begin(file)) {
+        const WavInfo& wav = detailReader.info();
+        const std::uint32_t bytesPerSecond =
+            wav.spec.sampleRate * wav.spec.channels *
+            (wav.spec.bitsPerSample / 8);
+        if (bytesPerSecond > 0) {
+            const unsigned long durationMs =
+                static_cast<unsigned long>(
+                    static_cast<std::uint64_t>(wav.dataSize) * 1000ULL /
+                    bytesPerSecond);
+            detail += "  " + formatTime(durationMs);
+        }
+        detailReader.end();
+    } else if (file) {
+        file.close();
+    }
+    return detail + "  " + storageUsageText();
+}
+
 void RecorderApp::setError(const String& message)
 {
     if (state_ == State::kRecording) {
@@ -912,6 +1433,14 @@ void RecorderApp::draw()
     forceRedraw_ = false;
     lastDrawMs_ = now;
 
+    if (screenSaverState_ == ScreenSaverState::kOff) {
+        return;
+    }
+    if (screenSaverState_ == ScreenSaverState::kDim) {
+        drawScreenSaver(now);
+        return;
+    }
+
     auto& display = recorderCanvas;
     constexpr std::uint16_t background = 0x0841;
     constexpr std::uint16_t panel = 0x10C3;
@@ -924,14 +1453,14 @@ void RecorderApp::draw()
     display.setTextFont(2);
     display.setTextColor(TFT_WHITE, panel);
     display.setCursor(8, 5);
-    display.print("VOICE");
+    display.print("RECORDER");
     display.setTextFont(1);
     display.setTextColor(
         battery_.valid && battery_.levelPercent <= 15
             ? TFT_RED
             : TFT_LIGHTGREY,
         panel);
-    display.setCursor(57, 8);
+    display.setCursor(76, 8);
     if (battery_.valid) {
         display.printf("%d%%", battery_.levelPercent);
     } else {
@@ -948,8 +1477,13 @@ void RecorderApp::draw()
                    ? "SAVING"
                    : (state_ == State::kPlaying
                           ? "PLAYING"
-                          : (state_ == State::kError ? "ERROR"
-                                                    : "LIBRARY")));
+                          : (state_ == State::kSettings
+                                 ? (settingsPage_ ==
+                                            SettingsPage::kScreenSaver
+                                        ? "SCREEN"
+                                        : "SETTINGS")
+                                 : (state_ == State::kError ? "ERROR"
+                                                           : "LIBRARY"))));
     display.drawString(pageLabel, display.width() - 8, 8);
     display.setTextDatum(top_left);
 
@@ -1058,6 +1592,53 @@ void RecorderApp::draw()
         display.setTextDatum(top_right);
         display.drawString("ENTER stop", display.width() - 8, 116);
         display.setTextDatum(top_left);
+    } else if (state_ == State::kSettings) {
+        const bool screenSaverPage =
+            settingsPage_ == SettingsPage::kScreenSaver;
+        const char* mainLabels[kSettingsCount] = {
+            "Brightness", "Screen Saver", "Idle Sleep WIP",
+            "Playback Speed WIP", "VAD WIP"};
+        const char* screenSaverLabels[kScreenSaverSettingsCount] = {
+            "When Home", "While Recording", "While Playing"};
+        const std::uint8_t settingCount =
+            screenSaverPage ? kScreenSaverSettingsCount : kSettingsCount;
+        int first = static_cast<int>(selectedSetting_) - 1;
+        if (first < 0) {
+            first = 0;
+        }
+        if (first + 4 > settingCount) {
+            first = max(0, static_cast<int>(settingCount) - 4);
+        }
+        for (int row = 0; row < 4 && first + row < settingCount; ++row) {
+            const int index = first + row;
+            const int y = 31 + row * 19;
+            const bool selected =
+                index == static_cast<int>(selectedSetting_);
+            if (selected) {
+                display.fillRoundRect(5, y - 2, display.width() - 10,
+                                      18, 4, selectedPanel);
+            }
+            display.setTextFont(1);
+            display.setTextColor(selected ? TFT_WHITE : muted,
+                                 selected ? selectedPanel : background);
+            display.setCursor(10, y + 3);
+            display.print(screenSaverPage ? screenSaverLabels[index]
+                                          : mainLabels[index]);
+            display.setTextDatum(middle_right);
+            display.drawString(settingValueText(index),
+                               display.width() - 10, y + 8);
+            display.setTextDatum(top_left);
+        }
+        display.fillRect(0, 111, display.width(), 24, panel);
+        display.setTextFont(1);
+        display.setTextColor(accent, panel);
+        display.setCursor(8, 120);
+        display.print("LEFT/RIGHT value");
+        display.setTextDatum(top_right);
+        display.setTextColor(muted, panel);
+        display.drawString(screenSaverPage ? "ESC BACK" : "ESC SAVE",
+                           display.width() - 8, 120);
+        display.setTextDatum(top_left);
     } else if (state_ == State::kError) {
         display.fillRoundRect(8, 34, display.width() - 16, 70, 6,
                               panel);
@@ -1075,30 +1656,31 @@ void RecorderApp::draw()
         display.setCursor(8, 116);
         display.print("ENTER retry storage");
     } else {
+        const String detail = selectedRecordingDetail();
         if (files_.empty()) {
-            display.drawRoundRect(14, 36, display.width() - 28, 62, 8,
+            display.drawRoundRect(14, 33, display.width() - 28, 53, 8,
                                   muted);
-            display.fillCircle(display.width() / 2, 57, 10, TFT_RED);
+            display.fillCircle(display.width() / 2, 51, 10, TFT_RED);
             display.setTextFont(2);
             display.setTextDatum(middle_center);
             display.setTextColor(TFT_WHITE, background);
             display.drawString("No recordings",
-                               display.width() / 2, 82);
+                               display.width() / 2, 75);
             display.setTextDatum(top_left);
         } else {
             int first = selected_ - 1;
             if (first < 0) {
                 first = 0;
             }
-            if (first + 4 > static_cast<int>(files_.size())) {
-                first = max(0, static_cast<int>(files_.size()) - 4);
+            if (first + 3 > static_cast<int>(files_.size())) {
+                first = max(0, static_cast<int>(files_.size()) - 3);
             }
-            for (int row = 0; row < 4 &&
+            for (int row = 0; row < 3 &&
                               first + row <
                                   static_cast<int>(files_.size());
                  ++row) {
                 const int index = first + row;
-                const int y = 29 + row * 20;
+                const int y = 29 + row * 19;
                 if (index == selected_) {
                     display.fillRoundRect(
                         5, y - 2, display.width() - 10, 18, 4,
@@ -1119,6 +1701,10 @@ void RecorderApp::draw()
                 display.setTextDatum(top_left);
             }
         }
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.setCursor(8, 94);
+        display.print(detail);
         display.fillRect(0, 111, display.width(), 24, panel);
         display.setTextFont(1);
         display.setTextColor(TFT_RED, panel);
@@ -1129,7 +1715,8 @@ void RecorderApp::draw()
         display.drawString("ENTER PLAY", display.width() / 2, 120);
         display.setTextDatum(top_right);
         display.setTextColor(muted, panel);
-        display.drawString("DEL", display.width() - 8, 120);
+        display.drawString(files_.empty() ? "G0 SET" : "DEL",
+                           display.width() - 8, 120);
         display.setTextDatum(top_left);
     }
     recorderCanvas.pushSprite(0, 0);

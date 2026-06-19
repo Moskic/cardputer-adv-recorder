@@ -7,7 +7,16 @@ namespace cardputer_recorder {
 InputEvent InputController::poll()
 {
     InputEvent event;
-    event.g0 = M5Cardputer.BtnA.wasPressed();
+    event.g0 = M5Cardputer.BtnA.wasReleased() &&
+               !M5Cardputer.BtnA.wasReleaseFor(900);
+    if (M5Cardputer.BtnA.pressedFor(900)) {
+        if (!settingsHoldReported_) {
+            event.settings = true;
+            settingsHoldReported_ = true;
+        }
+    } else if (!M5Cardputer.BtnA.isPressed()) {
+        settingsHoldReported_ = false;
+    }
     if (!M5Cardputer.Keyboard.isChange() ||
         !M5Cardputer.Keyboard.isPressed()) {
         return event;
@@ -19,11 +28,17 @@ InputEvent InputController::poll()
 
     for (const char character : state.word) {
         switch (character) {
+            case ',':
+                event.left = true;
+                break;
             case ';':
                 event.up = true;
                 break;
             case '.':
                 event.down = true;
+                break;
+            case '/':
+                event.right = true;
                 break;
             case '`':
                 event.back = true;

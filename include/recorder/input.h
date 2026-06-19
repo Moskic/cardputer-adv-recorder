@@ -4,6 +4,8 @@ namespace cardputer_recorder {
 
 struct InputEvent {
     bool g0 = false;
+    bool left = false;
+    bool right = false;
     bool up = false;
     bool down = false;
     bool confirm = false;
@@ -11,11 +13,15 @@ struct InputEvent {
     bool fail = false;
     bool record = false;
     bool deletePressed = false;
+    bool settings = false;
 };
 
 class InputController {
 public:
     InputEvent poll();
+
+private:
+    bool settingsHoldReported_ = false;
 };
 
 }  // namespace cardputer_recorder

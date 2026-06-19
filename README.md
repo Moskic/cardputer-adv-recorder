@@ -14,7 +14,10 @@ is not limited by available RAM.
 - Stream recordings to microSD as `/REC0001.WAV` through `/REC9999.WAV`.
 - Browse, play, and delete WAV files from the device.
 - Adjust playback volume while listening.
-- Show recording level, elapsed time, file size, and battery status.
+- Show recording level, elapsed time, file size, battery status, SD free
+  space, and selected-file details.
+- Configure display brightness and screen saver behavior from the device.
+- Keep recording or playback running while the screen is dimmed or off.
 - Recover from missing cards, low space, and storage errors.
 - Finalize WAV headers and sync storage before presenting a recording as saved.
 
@@ -48,6 +51,29 @@ platformio test -e native-tests
 | `Enter` | Play or stop the selected recording |
 | Up/Down during playback | Adjust volume |
 | `Delete` | Delete the selected recording |
+| Short `G0` press | Manually enter the configured screen saver mode |
+| Long `G0` press | Open settings |
+| Left/Right key positions (`,` / `/`) | Change a setting value |
+| `Esc` in settings | Save settings or return from a submenu |
+
+## Settings
+
+Settings are saved on the device and restored after reboot. Brightness is
+applied immediately. Screen saver options are grouped under `Screen Saver`:
+
+| Setting | Values |
+| --- | --- |
+| Brightness | 10% through 100%, in 10% steps |
+| Screen Saver / When Home | Off, Dimmed Standby, Black |
+| Screen Saver / While Recording | Off, Dimmed Standby, Black |
+| Screen Saver / While Playing | Off, Dimmed Standby, Black |
+
+`Dimmed Standby` shows a low-brightness status screen. `Black` turns the
+display off. Recording and playback continue in both modes; the first key
+press wakes the screen and is not used as a stop, delete, or volume command.
+
+Settings marked `WIP` are stored for later firmware stages but do not change
+behavior yet.
 
 ## Audio format
 
