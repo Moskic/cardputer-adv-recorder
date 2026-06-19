@@ -35,11 +35,24 @@ platformio run --target upload
 platformio device monitor
 ```
 
+Release firmware is published as a complete image. Flash it at offset `0x0000`:
+
+```sh
+esptool.py --chip esp32s3 --baud 460800 write_flash \
+  0x0000 cardputer-adv-recorder-vX.Y.Z.bin
+```
+
 The serial monitor runs at 115200 baud. To run host-side tests:
 
 ```sh
 platformio test -e native-tests
 ```
+
+## Project layout
+
+- `src/app`: recorder state flow, UI, settings, screen saver, and file browser.
+- `src/hardware`: Cardputer ADV board, audio, power, and microSD services.
+- `src/media`: WAV parsing, writing, and recording filename helpers.
 
 ## Controls
 

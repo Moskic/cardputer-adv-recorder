@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 - App structure and release packaging
+
+- Split the recorder application implementation into focused app modules for
+  recording flow, playback flow, capture buffering, UI, settings, screen saver,
+  and file browsing.
+- Keep `RecorderApp` as the public application entry point while reducing the
+  main implementation file size.
+- Simplify release packaging to publish one complete flash image plus
+  `SHA256SUMS.txt`.
+- Document complete release image flashing at offset `0x0000`.
+
 ## 1.1.0 - Display settings and screen saver
 
 - Change the header label to `RECORDER`.
