@@ -9,6 +9,20 @@ is not limited by available RAM.
 > Only Cardputer ADV is supported. The original Cardputer uses different audio
 > hardware and is not compatible with this firmware.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/record.jpg" alt="Record screen" width="32%">
+  <img src="docs/images/play.jpg" alt="Play screen" width="32%">
+  <img src="docs/images/library.jpg" alt="Library screen" width="32%">
+</p>
+
+<p align="center">
+  <img src="docs/images/setting.jpg" alt="Settings screen" width="32%">
+  <img src="docs/images/help.jpg" alt="Help screen" width="32%">
+  <img src="docs/images/standby.jpg" alt="Standby screen" width="32%">
+</p>
+
 ## Features
 
 - Stream recordings to microSD as `/REC0001.WAV` through `/REC9999.WAV`.
