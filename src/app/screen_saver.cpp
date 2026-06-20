@@ -3,13 +3,18 @@
 #include "recorder/app/app_shared.h"
 
 namespace cardputer_recorder {
+namespace {
+
+constexpr unsigned long kTriplePressWakeTimeoutMs = 3000;
+
+}  // namespace
 
 bool RecorderApp::anyInput(const InputEvent& event) const
 {
     return event.g0 || event.left || event.right || event.up ||
-           event.down || event.confirm || event.back || event.fail ||
-           event.record || event.deletePressed || event.settings ||
-           event.help;
+           event.down || event.speedDown || event.speedUp ||
+           event.confirm || event.back || event.fail || event.record ||
+           event.deletePressed || event.settings || event.help;
 }
 bool RecorderApp::screenSaverAllowed() const
 {
@@ -28,6 +33,20 @@ std::uint8_t RecorderApp::screenSaverModeForState() const
 }
 void RecorderApp::serviceScreenSaver()
 {
+    if (screenSaverState_ != ScreenSaverState::kAwake &&
+        wakeConfirmCount_ > 0 &&
+        millis() - wakeConfirmLastMs_ > kTriplePressWakeTimeoutMs) {
+        resetWakeConfirmation();
+        if (screenSaverModeForState() == 2) {
+            screenSaverState_ = ScreenSaverState::kOff;
+            M5Cardputer.Display.setBrightness(0);
+            M5Cardputer.Display.sleep();
+            forceRedraw_ = false;
+        } else {
+            forceRedraw_ = true;
+        }
+    }
+
     if (!screenSaverAllowed()) {
         if (screenSaverState_ != ScreenSaverState::kAwake) {
             wakeScreen();
@@ -65,6 +84,7 @@ void RecorderApp::enterScreenSaver(bool manual)
     }
 
     screenSaverManual_ = manual;
+    resetWakeConfirmation();
     if (mode == 2) {
         screenSaverState_ = ScreenSaverState::kOff;
         M5Cardputer.Display.setBrightness(0);
@@ -77,12 +97,52 @@ void RecorderApp::enterScreenSaver(bool manual)
         forceRedraw_ = true;
     }
 }
+bool RecorderApp::handleScreenSaverWake(const InputEvent& event)
+{
+    if (!settings_.triplePressWake) {
+        wakeScreen();
+        return true;
+    }
+
+    const char key = event.primaryKey != '\0' ? event.primaryKey : '?';
+    const unsigned long now = millis();
+    if (wakeConfirmCount_ == 0 ||
+        now - wakeConfirmLastMs_ > kTriplePressWakeTimeoutMs ||
+        wakeConfirmKey_ != key) {
+        wakeConfirmKey_ = key;
+        wakeConfirmCount_ = 1;
+    } else if (wakeConfirmCount_ < 3) {
+        ++wakeConfirmCount_;
+    }
+    wakeConfirmLastMs_ = now;
+
+    if (screenSaverState_ == ScreenSaverState::kOff) {
+        screenSaverState_ = ScreenSaverState::kDim;
+        M5Cardputer.Display.wakeup();
+        M5Cardputer.Display.setBrightness(kDimBrightness);
+    }
+
+    if (wakeConfirmCount_ >= 3) {
+        wakeScreen();
+        return true;
+    }
+
+    forceRedraw_ = true;
+    return true;
+}
+void RecorderApp::resetWakeConfirmation()
+{
+    wakeConfirmKey_ = '\0';
+    wakeConfirmCount_ = 0;
+    wakeConfirmLastMs_ = 0;
+}
 void RecorderApp::wakeScreen()
 {
     M5Cardputer.Display.wakeup();
     applyBrightness();
     screenSaverState_ = ScreenSaverState::kAwake;
     screenSaverManual_ = false;
+    resetWakeConfirmation();
     forceRedraw_ = true;
 }
 void RecorderApp::drawScreenSaver(unsigned long now)
@@ -107,7 +167,23 @@ void RecorderApp::drawScreenSaver(unsigned long now)
     }
     display.setTextDatum(top_left);
 
-    if (state_ == State::kRecording) {
+    if (wakeConfirmCount_ > 0) {
+        display.setTextFont(2);
+        display.setTextDatum(middle_center);
+        display.setTextColor(TFT_WHITE, background);
+        display.drawString("Triple-Press Wake",
+                           display.width() / 2, 44);
+        display.setTextFont(1);
+        display.setTextColor(muted, background);
+        display.drawString("Press same key 3 times",
+                           display.width() / 2, 68);
+        display.setTextFont(2);
+        display.setTextColor(accent, background);
+        display.drawString(
+            "Wake " + String(wakeConfirmCount_) + "/3",
+            display.width() / 2, 91);
+        display.setTextDatum(top_left);
+    } else if (state_ == State::kRecording) {
         const std::uint32_t recordingBytes =
             recordingBytes_.load(std::memory_order_relaxed);
         display.fillCircle(20, 45, 7, TFT_RED);
@@ -146,7 +222,7 @@ void RecorderApp::drawScreenSaver(unsigned long now)
             "VOL " +
                 String(static_cast<unsigned int>(
                     playbackVolume_ * 100U / 255U)) +
-                "% " + playbackSpeedText(settings_.playbackSpeedIndex),
+                "% " + playbackSpeedText(playbackSpeedIndex_),
             display.width() / 2, 99);
         display.setTextDatum(top_left);
     } else {

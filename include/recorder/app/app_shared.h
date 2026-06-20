@@ -17,18 +17,20 @@ constexpr unsigned long kCaptureStartTimeoutMs = 1000;
 constexpr unsigned long kCaptureDrainTimeoutMs = 1000;
 constexpr unsigned long kSaveSettleMs = 750;
 constexpr unsigned long kRecordingStopGuardMs = 500;
-constexpr std::uint8_t kSettingsCount = 5;
-constexpr std::uint8_t kScreenSaverSettingsCount = 3;
+constexpr std::uint8_t kSettingsCount = 6;
+constexpr std::uint8_t kScreenSaverSettingsCount = 4;
 constexpr unsigned long kIdleScreenSaverDelayMs = 30000;
 constexpr unsigned long kActiveScreenSaverDelayMs = 15000;
 constexpr std::uint8_t kDimBrightness = 12;
+constexpr const char* kAppVersion = "1.4.0";
 
 extern M5Canvas recorderCanvas;
 
 String formatTime(unsigned long milliseconds);
 String formatByteCount(std::uint64_t bytes);
 const char* screenModeText(std::uint8_t mode);
-const char* idleSleepText(std::uint8_t mode);
 const char* playbackSpeedText(std::uint8_t index);
+const char* lowBatterySaveText(std::uint8_t percent);
+const char* seekStepText(std::uint8_t seconds);
 
 }  // namespace cardputer_recorder

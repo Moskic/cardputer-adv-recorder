@@ -18,6 +18,7 @@ is not limited by available RAM.
   space, and selected-file details.
 - Configure display brightness and screen saver behavior from the device.
 - Keep recording or playback running while the screen is dimmed or off.
+- Auto-save an active recording at the configured low battery threshold.
 - Recover from missing cards, low space, and storage errors.
 - Finalize WAV headers and sync storage before presenting a recording as saved.
 
@@ -65,8 +66,9 @@ platformio test -e native-tests
 | `Enter` | Play the selected recording |
 | `Enter` during playback | Pause or resume playback |
 | `Esc` during playback | Stop playback |
-| Left/Right during playback (`,` / `/`) | Seek backward or forward 10 seconds |
+| Left/Right during playback (`,` / `/`) | Seek backward or forward by the configured seek step |
 | Up/Down during playback | Adjust volume |
+| `[` / `]` during playback | Decrease or increase playback speed |
 | Left in library (`,`) | Lock or unlock the selected recording |
 | Right in library (`/`) | Rename the selected recording |
 | `Delete` in library | Ask to delete the selected recording |
@@ -89,16 +91,31 @@ applied immediately. Screen saver options are grouped under `Screen Saver`:
 | Setting | Values |
 | --- | --- |
 | Brightness | 10% through 100%, in 10% steps |
+| Low Battery Save | Off, 1%, 5%, 10% |
+| Seek Step | 5 sec, 10 sec, 20 sec, 60 sec |
+| Reset to Default | Restores saved settings after confirmation |
+| Version | Current firmware version |
 | Screen Saver / When Home | Off, Dimmed Standby, Black |
 | Screen Saver / While Recording | Off, Dimmed Standby, Black |
 | Screen Saver / While Playing | Off, Dimmed Standby, Black |
+| Screen Saver / Triple-Press Wake | Off, On |
+
+`Low Battery Save` defaults to `10%`. When it is enabled and battery data is
+valid, recording stops through the normal save path once the battery reaches
+the selected threshold.
 
 `Dimmed Standby` shows a low-brightness status screen. `Black` turns the
 display off. Recording and playback continue in both modes; the first key
 press wakes the screen and is not used as a stop, delete, or volume command.
+When `Triple-Press Wake` is on, the same key must be pressed three times to
+wake from `Dimmed Standby` or `Black`.
 
-Settings marked `WIP` are stored for later firmware stages but do not change
-behavior yet.
+`Reset to Default` asks for confirmation before restoring brightness, screen
+saver, triple-press wake, low battery save, and seek step to their defaults.
+
+Playback speed starts at `1.0x` each time playback begins and can be changed
+live from `0.75x` through `2.0x`. Speed changes adjust the playback sample
+rate, so pitch changes with speed.
 
 ## File management
 

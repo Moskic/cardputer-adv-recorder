@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0 - Power, settings, and playback speed
+
+- Remove the unused `Idle Sleep WIP` setting.
+- Add `Triple-Press Wake` as an optional Screen Saver wake guard.
+- Add configurable low battery auto-save for active recordings.
+- Simplify the Help menu and remove visible WIP settings.
+- Add settings reset confirmation and show the current firmware version in
+  settings.
+- Add live playback speed control with `[` and `]`.
+- Add a configurable playback seek step with a 5-second default.
+
 ## 1.3.0 - Playback controls and file management
 
 - Add pause and resume during playback.

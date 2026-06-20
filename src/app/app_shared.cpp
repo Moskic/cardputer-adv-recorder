@@ -47,20 +47,6 @@ const char* screenModeText(std::uint8_t mode)
     }
 }
 
-const char* idleSleepText(std::uint8_t mode)
-{
-    switch (mode) {
-        case 1:
-            return "5 MIN";
-        case 2:
-            return "15 MIN";
-        case 3:
-            return "30 MIN";
-        default:
-            return "OFF";
-    }
-}
-
 const char* playbackSpeedText(std::uint8_t index)
 {
     switch (index) {
@@ -74,6 +60,34 @@ const char* playbackSpeedText(std::uint8_t index)
             return "2.0x";
         default:
             return "1.0x";
+    }
+}
+
+const char* lowBatterySaveText(std::uint8_t percent)
+{
+    switch (percent) {
+        case 1:
+            return "1%";
+        case 5:
+            return "5%";
+        case 10:
+            return "10%";
+        default:
+            return "OFF";
+    }
+}
+
+const char* seekStepText(std::uint8_t seconds)
+{
+    switch (seconds) {
+        case 10:
+            return "10 sec";
+        case 20:
+            return "20 sec";
+        case 60:
+            return "60 sec";
+        default:
+            return "5 sec";
     }
 }
 

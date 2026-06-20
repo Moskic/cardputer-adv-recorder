@@ -52,6 +52,7 @@ bool RecorderApp::startRecording()
     recordingLevel_.store(0, std::memory_order_relaxed);
     recordingBytes_.store(0, std::memory_order_relaxed);
     recordingNoiseFloor_ = 0.0F;
+    lowBatteryAutoSave_ = false;
     if (!startCaptureWriter()) {
         audio_.stop();
         writer_.abort();
@@ -96,6 +97,12 @@ void RecorderApp::serviceRecording()
     if (captureWriterFailed_.load(std::memory_order_acquire)) {
         stopRecording(false);
         setError("E8: Recording SD write failed.");
+        return;
+    }
+    if (shouldAutoSaveForLowBattery()) {
+        lowBatteryAutoSave_ = true;
+        message_ = "Low battery: saving...";
+        stopRecording(true);
         return;
     }
 
@@ -186,6 +193,7 @@ void RecorderApp::stopRecording(bool keepFile)
         state_ = keepFile ? State::kError : State::kBrowsing;
         message_ = keepFile ? "Save failed: capture drain."
                             : "Recording discarded.";
+        lowBatteryAutoSave_ = false;
         currentPath_ = "";
         scanFiles();
         forceRedraw_ = true;
@@ -254,11 +262,15 @@ void RecorderApp::finishSaving(bool success, const String& detail)
     }
 
     if (success) {
-        message_ =
-            "Saved " +
-            String(static_cast<unsigned long>(
-                saveTotalBytes_ / 1024)) +
-            " KB";
+        message_ = lowBatteryAutoSave_
+                       ? "Low battery: saved " +
+                             String(static_cast<unsigned long>(
+                                 saveTotalBytes_ / 1024)) +
+                             " KB"
+                       : "Saved " +
+                             String(static_cast<unsigned long>(
+                                 saveTotalBytes_ / 1024)) +
+                             " KB";
         state_ = State::kBrowsing;
     } else {
         Serial.printf(
@@ -275,6 +287,7 @@ void RecorderApp::finishSaving(bool success, const String& detail)
     currentPath_ = "";
     saveTotalBytes_ = 0;
     saveCopiedBytes_ = 0;
+    lowBatteryAutoSave_ = false;
     saveSettledAtMs_ = 0;
     saveAwaitingSettle_ = false;
     if (storage_.isMounted()) {

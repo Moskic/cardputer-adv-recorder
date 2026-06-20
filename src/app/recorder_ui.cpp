@@ -173,7 +173,7 @@ void RecorderApp::draw()
             "VOL " +
                 String(static_cast<unsigned int>(
                     playbackVolume_ * 100U / 255U)) +
-                "%",
+                "% " + playbackSpeedText(playbackSpeedIndex_),
             display.width() - 8, 98);
         display.setTextDatum(top_left);
         display.setTextColor(TFT_WHITE, background);
@@ -186,10 +186,11 @@ void RecorderApp::draw()
         const bool screenSaverPage =
             settingsPage_ == SettingsPage::kScreenSaver;
         const char* mainLabels[kSettingsCount] = {
-            "Brightness", "Screen Saver", "Idle Sleep WIP",
-            "Playback Speed WIP", "VAD WIP"};
+            "Brightness", "Screen Saver", "Low Battery Save",
+            "Seek Step", "Reset to Default", "Version"};
         const char* screenSaverLabels[kScreenSaverSettingsCount] = {
-            "When Home", "While Recording", "While Playing"};
+            "When Home", "While Recording", "While Playing",
+            "Triple-Press Wake"};
         const std::uint8_t settingCount =
             screenSaverPage ? kScreenSaverSettingsCount : kSettingsCount;
         int first = static_cast<int>(selectedSetting_) - 1;
@@ -223,7 +224,14 @@ void RecorderApp::draw()
         display.setTextFont(1);
         display.setTextColor(accent, panel);
         display.setCursor(8, 120);
-        display.print("LEFT/RIGHT value");
+        if (!screenSaverPage && selectedSetting_ == 4) {
+            display.print(resetSettingsConfirm_ ? "ENTER reset"
+                                                : "ENTER confirm");
+        } else if (!screenSaverPage && selectedSetting_ == 5) {
+            display.print("VERSION");
+        } else {
+            display.print("LEFT/RIGHT value");
+        }
         display.setTextDatum(top_right);
         display.setTextColor(muted, panel);
         display.drawString(screenSaverPage ? "ESC BACK" : "ESC SAVE",
@@ -256,17 +264,14 @@ void RecorderApp::draw()
         display.setTextDatum(top_left);
     } else if (state_ == State::kHelp) {
         const char* titles[] = {
-            "Library 1", "Library 2", "Delete", "Rename",
-            "Recording", "Playback 1", "Playback 2", "System"};
+            "Library", "Manage", "Recording", "Playback", "System"};
         const char* rows[][4] = {
             {"R  record", "ENTER  play", "UP/DOWN  select", ""},
-            {"LEFT  lock", "RIGHT  rename", "H  help", ""},
-            {"DELETE  ask", "ENTER  confirm", "ESC  cancel", ""},
-            {"TYPE  name", "DELETE  backspace", "ENTER  save", ""},
-            {"ENTER  stop", "R / ESC  stop", "G0  screen saver", ""},
-            {"ENTER  pause", "ESC  stop", "UP/DOWN  volume", ""},
-            {"LEFT  back 10s", "RIGHT  fwd 10s", "G0  screen saver", ""},
-            {"Hold G0  settings", "1st key wakes", "LEFT/RIGHT page", ""},
+            {"LEFT  lock", "RIGHT  rename", "DELETE  delete", ""},
+            {"ENTER  save", "ESC / R  save", "G0  screen saver", ""},
+            {"ENTER  pause", "ESC  stop", "LEFT/RIGHT seek",
+             "UP/DOWN vol  [ ] speed"},
+            {"Hold G0  settings", "H  help", "G0  screen saver", ""},
         };
 
         display.setTextFont(2);
@@ -277,7 +282,7 @@ void RecorderApp::draw()
         display.setTextColor(muted, background);
         display.setTextDatum(top_right);
         display.drawString(
-            String(helpPage_ + 1) + "/8", display.width() - 8, 35);
+            String(helpPage_ + 1) + "/5", display.width() - 8, 35);
         display.setTextDatum(top_left);
         display.setTextFont(2);
         display.setTextColor(TFT_WHITE, background);
@@ -285,17 +290,17 @@ void RecorderApp::draw()
             if (rows[helpPage_][row][0] == '\0') {
                 continue;
             }
-            display.setCursor(12, 52 + row * 17);
+            display.setCursor(12, 50 + row * 16);
             display.print(rows[helpPage_][row]);
         }
-        display.fillRect(0, 111, display.width(), 24, panel);
+        display.fillRect(0, 117, display.width(), 18, panel);
         display.setTextFont(1);
         display.setTextColor(accent, panel);
-        display.setCursor(8, 120);
+        display.setCursor(8, 124);
         display.print("LEFT/RIGHT page");
         display.setTextDatum(top_right);
         display.setTextColor(muted, panel);
-        display.drawString("ENTER/ESC BACK", display.width() - 8, 120);
+        display.drawString("ENTER/ESC BACK", display.width() - 8, 124);
         display.setTextDatum(top_left);
     } else if (state_ == State::kError) {
         display.fillRoundRect(8, 34, display.width() - 16, 70, 6,

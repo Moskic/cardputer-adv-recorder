@@ -39,9 +39,10 @@ private:
         std::uint8_t idleScreenMode = 1;
         std::uint8_t recordingScreenMode = 1;
         std::uint8_t playbackScreenMode = 1;
-        std::uint8_t idleSleepMode = 0;
-        std::uint8_t playbackSpeedIndex = 1;
+        std::uint8_t lowBatterySavePercent = 10;
+        std::uint8_t seekStepSeconds = 5;
         bool vadEnabled = false;
+        bool triplePressWake = false;
     };
 
     enum class ScreenSaverState : std::uint8_t {
@@ -67,6 +68,7 @@ private:
     void servicePlayback();
     void togglePlaybackPause();
     bool seekPlayback(int seconds);
+    bool changePlaybackSpeed(int offset);
     void stopPlayback();
     void openSettings();
     void closeSettings();
@@ -77,6 +79,7 @@ private:
     void handleRenameInput(const InputEvent& event);
     void commitRename();
     void cycleSelectedSetting(int offset);
+    void resetSettingsToDefault();
     void loadSettings();
     void saveSettings();
     void applyBrightness();
@@ -87,6 +90,8 @@ private:
     void serviceScreenSaver();
     void resetScreenSaverTimer();
     void enterScreenSaver(bool manual);
+    bool handleScreenSaverWake(const InputEvent& event);
+    void resetWakeConfirmation();
     void wakeScreen();
     void drawScreenSaver(unsigned long now);
     void deleteSelected();
@@ -108,8 +113,10 @@ private:
     void amplifyPlayback(std::int16_t* samples, std::size_t count) const;
     void adjustVolume(int offset);
     void updateBattery(bool force = false);
+    bool shouldAutoSaveForLowBattery() const;
     unsigned long playbackElapsedMs() const;
     std::uint32_t playbackBytesPerSecond() const;
+    std::uint32_t playbackOutputSampleRate() const;
     String storageUsageText() const;
     String selectedRecordingDetail();
     void setError(const String& message);
@@ -135,9 +142,13 @@ private:
     Settings settings_;
     std::uint8_t selectedSetting_ = 0;
     std::uint8_t helpPage_ = 0;
+    bool resetSettingsConfirm_ = false;
     SettingsPage settingsPage_ = SettingsPage::kMain;
     ScreenSaverState screenSaverState_ = ScreenSaverState::kAwake;
     bool screenSaverManual_ = false;
+    char wakeConfirmKey_ = '\0';
+    std::uint8_t wakeConfirmCount_ = 0;
+    unsigned long wakeConfirmLastMs_ = 0;
     unsigned long lastUserActivityMs_ = 0;
     std::vector<String> files_;
     std::vector<String> lockedFiles_;
@@ -164,11 +175,13 @@ private:
     float recordingNoiseFloor_ = 0.0F;
     std::uint8_t playbackBufferIndex_ = 0;
     std::uint8_t playbackVolume_ = 255;
+    std::uint8_t playbackSpeedIndex_ = 1;
     std::uint32_t playbackDurationMs_ = 0;
     std::uint32_t playbackBaseElapsedMs_ = 0;
     bool playbackPaused_ = false;
     std::uint32_t saveTotalBytes_ = 0;
     std::uint32_t saveCopiedBytes_ = 0;
+    bool lowBatteryAutoSave_ = false;
     unsigned long saveSettledAtMs_ = 0;
     bool saveAwaitingSettle_ = false;
     String currentPath_;

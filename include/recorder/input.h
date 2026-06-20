@@ -10,6 +10,8 @@ struct InputEvent {
     bool right = false;
     bool up = false;
     bool down = false;
+    bool speedDown = false;
+    bool speedUp = false;
     bool confirm = false;
     bool back = false;
     bool fail = false;
@@ -17,6 +19,7 @@ struct InputEvent {
     bool deletePressed = false;
     bool settings = false;
     bool help = false;
+    char primaryKey = '\0';
     String text;
 };
 

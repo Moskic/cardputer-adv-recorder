@@ -64,7 +64,7 @@ void RecorderApp::handleInput(const InputEvent& event)
     const bool hasInput = anyInput(event);
     if (hasInput) {
         if (screenSaverState_ != ScreenSaverState::kAwake) {
-            wakeScreen();
+            handleScreenSaverWake(event);
             resetScreenSaverTimer();
             return;
         }
@@ -109,9 +109,14 @@ void RecorderApp::handleInput(const InputEvent& event)
             adjustVolume(-16);
         }
         if (event.left) {
-            seekPlayback(-10);
+            seekPlayback(-settings_.seekStepSeconds);
         } else if (event.right) {
-            seekPlayback(10);
+            seekPlayback(settings_.seekStepSeconds);
+        }
+        if (event.speedDown) {
+            changePlaybackSpeed(-1);
+        } else if (event.speedUp) {
+            changePlaybackSpeed(1);
         }
         if (event.confirm) {
             togglePlaybackPause();
@@ -189,7 +194,7 @@ void RecorderApp::openHelp()
 
 void RecorderApp::handleHelpInput(const InputEvent& event)
 {
-    constexpr std::uint8_t kHelpPageCount = 8;
+    constexpr std::uint8_t kHelpPageCount = 5;
     if (event.back || event.confirm || event.help) {
         state_ = State::kBrowsing;
         message_ = "Help closed.";
@@ -216,6 +221,12 @@ void RecorderApp::updateBattery(bool force)
     lastBatteryReadMs_ = now;
     battery_ = power_.readBattery();
     forceRedraw_ = true;
+}
+
+bool RecorderApp::shouldAutoSaveForLowBattery() const
+{
+    return settings_.lowBatterySavePercent > 0 && battery_.valid &&
+           battery_.levelPercent <= settings_.lowBatterySavePercent;
 }
 
 void RecorderApp::setError(const String& message)

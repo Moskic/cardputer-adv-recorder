@@ -8,6 +8,7 @@ void RecorderApp::openSettings()
 {
     selectedSetting_ = 0;
     settingsPage_ = SettingsPage::kMain;
+    resetSettingsConfirm_ = false;
     state_ = State::kSettings;
     message_ = "Settings";
     forceRedraw_ = true;
@@ -22,6 +23,12 @@ void RecorderApp::closeSettings()
 void RecorderApp::handleSettingsInput(const InputEvent& event)
 {
     if (event.settings || event.back) {
+        if (resetSettingsConfirm_) {
+            resetSettingsConfirm_ = false;
+            message_ = "Reset canceled.";
+            forceRedraw_ = true;
+            return;
+        }
         if (settingsPage_ == SettingsPage::kScreenSaver) {
             settingsPage_ = SettingsPage::kMain;
             selectedSetting_ = 1;
@@ -36,10 +43,12 @@ void RecorderApp::handleSettingsInput(const InputEvent& event)
             ? kScreenSaverSettingsCount
             : kSettingsCount;
     if (event.up) {
+        resetSettingsConfirm_ = false;
         selectedSetting_ =
             (selectedSetting_ + settingCount - 1) % settingCount;
         forceRedraw_ = true;
     } else if (event.down) {
+        resetSettingsConfirm_ = false;
         selectedSetting_ = (selectedSetting_ + 1) % settingCount;
         forceRedraw_ = true;
     } else if (event.right || event.confirm) {
@@ -52,6 +61,12 @@ void RecorderApp::handleSettingsInput(const InputEvent& event)
         }
         cycleSelectedSetting(1);
     } else if (event.left) {
+        if (resetSettingsConfirm_) {
+            resetSettingsConfirm_ = false;
+            message_ = "Reset canceled.";
+            forceRedraw_ = true;
+            return;
+        }
         cycleSelectedSetting(-1);
     }
 }
@@ -69,6 +84,10 @@ void RecorderApp::cycleSelectedSetting(int offset)
         if (value != nullptr) {
             *value = static_cast<std::uint8_t>(
                 (static_cast<int>(*value) + 3 + offset) % 3);
+            saveSettings();
+            forceRedraw_ = true;
+        } else if (selectedSetting_ == 3) {
+            settings_.triplePressWake = !settings_.triplePressWake;
             saveSettings();
             forceRedraw_ = true;
         }
@@ -93,25 +112,60 @@ void RecorderApp::cycleSelectedSetting(int offset)
             break;
         }
         case 2:
-            settings_.idleSleepMode = static_cast<std::uint8_t>(
-                (static_cast<int>(settings_.idleSleepMode) + 4 +
-                 offset) %
-                4);
+        {
+            constexpr std::uint8_t values[] = {0, 1, 5, 10};
+            constexpr int count = sizeof(values) / sizeof(values[0]);
+            int index = 3;
+            for (int candidate = 0; candidate < count; ++candidate) {
+                if (settings_.lowBatterySavePercent ==
+                    values[candidate]) {
+                    index = candidate;
+                    break;
+                }
+            }
+            index = (index + count + offset) % count;
+            settings_.lowBatterySavePercent = values[index];
             break;
+        }
         case 3:
-            settings_.playbackSpeedIndex = static_cast<std::uint8_t>(
-                (static_cast<int>(settings_.playbackSpeedIndex) + 5 +
-                 offset) %
-                5);
+        {
+            constexpr std::uint8_t values[] = {5, 10, 20, 60};
+            constexpr int count = sizeof(values) / sizeof(values[0]);
+            int index = 0;
+            for (int candidate = 0; candidate < count; ++candidate) {
+                if (settings_.seekStepSeconds == values[candidate]) {
+                    index = candidate;
+                    break;
+                }
+            }
+            index = (index + count + offset) % count;
+            settings_.seekStepSeconds = values[index];
             break;
+        }
         case 4:
-            settings_.vadEnabled = !settings_.vadEnabled;
+            if (resetSettingsConfirm_) {
+                resetSettingsToDefault();
+            } else if (offset > 0) {
+                resetSettingsConfirm_ = true;
+                message_ = "Press Enter again to reset.";
+            }
+            break;
+        case 5:
             break;
         default:
             break;
     }
     saveSettings();
     forceRedraw_ = true;
+}
+void RecorderApp::resetSettingsToDefault()
+{
+    settings_ = Settings{};
+    resetSettingsConfirm_ = false;
+    saveSettings();
+    applyBrightness();
+    resetScreenSaverTimer();
+    message_ = "Settings reset.";
 }
 void RecorderApp::loadSettings()
 {
@@ -124,12 +178,14 @@ void RecorderApp::loadSettings()
         preferences_.getUChar("rec_scr", settings_.recordingScreenMode);
     settings_.playbackScreenMode =
         preferences_.getUChar("play_scr", settings_.playbackScreenMode);
-    settings_.idleSleepMode =
-        preferences_.getUChar("sleep", settings_.idleSleepMode);
-    settings_.playbackSpeedIndex =
-        preferences_.getUChar("speed", settings_.playbackSpeedIndex);
+    settings_.lowBatterySavePercent =
+        preferences_.getUChar("low_save", settings_.lowBatterySavePercent);
+    settings_.seekStepSeconds =
+        preferences_.getUChar("seek_step", settings_.seekStepSeconds);
     settings_.vadEnabled =
         preferences_.getBool("vad", settings_.vadEnabled);
+    settings_.triplePressWake =
+        preferences_.getBool("triple_wake", settings_.triplePressWake);
 
     if (settings_.brightnessPercent < 10 ||
         settings_.brightnessPercent > 100) {
@@ -144,11 +200,17 @@ void RecorderApp::loadSettings()
     if (settings_.playbackScreenMode > 2) {
         settings_.playbackScreenMode = 1;
     }
-    if (settings_.idleSleepMode > 3) {
-        settings_.idleSleepMode = 0;
+    if (settings_.lowBatterySavePercent != 0 &&
+        settings_.lowBatterySavePercent != 1 &&
+        settings_.lowBatterySavePercent != 5 &&
+        settings_.lowBatterySavePercent != 10) {
+        settings_.lowBatterySavePercent = 10;
     }
-    if (settings_.playbackSpeedIndex > 4) {
-        settings_.playbackSpeedIndex = 1;
+    if (settings_.seekStepSeconds != 5 &&
+        settings_.seekStepSeconds != 10 &&
+        settings_.seekStepSeconds != 20 &&
+        settings_.seekStepSeconds != 60) {
+        settings_.seekStepSeconds = 5;
     }
 }
 void RecorderApp::saveSettings()
@@ -157,9 +219,10 @@ void RecorderApp::saveSettings()
     preferences_.putUChar("idle_scr", settings_.idleScreenMode);
     preferences_.putUChar("rec_scr", settings_.recordingScreenMode);
     preferences_.putUChar("play_scr", settings_.playbackScreenMode);
-    preferences_.putUChar("sleep", settings_.idleSleepMode);
-    preferences_.putUChar("speed", settings_.playbackSpeedIndex);
+    preferences_.putUChar("low_save", settings_.lowBatterySavePercent);
+    preferences_.putUChar("seek_step", settings_.seekStepSeconds);
     preferences_.putBool("vad", settings_.vadEnabled);
+    preferences_.putBool("triple_wake", settings_.triplePressWake);
 }
 void RecorderApp::applyBrightness()
 {
@@ -177,6 +240,8 @@ String RecorderApp::settingValueText(std::uint8_t index) const
                 return screenModeText(settings_.recordingScreenMode);
             case 2:
                 return screenModeText(settings_.playbackScreenMode);
+            case 3:
+                return settings_.triplePressWake ? "ON" : "OFF";
             default:
                 return "";
         }
@@ -188,11 +253,13 @@ String RecorderApp::settingValueText(std::uint8_t index) const
         case 1:
             return ">";
         case 2:
-            return idleSleepText(settings_.idleSleepMode);
+            return lowBatterySaveText(settings_.lowBatterySavePercent);
         case 3:
-            return playbackSpeedText(settings_.playbackSpeedIndex);
+            return seekStepText(settings_.seekStepSeconds);
         case 4:
-            return settings_.vadEnabled ? "ON" : "OFF";
+            return resetSettingsConfirm_ ? "CONFIRM?" : "";
+        case 5:
+            return kAppVersion;
         default:
             return "";
     }
